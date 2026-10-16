@@ -2,52 +2,722 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Movie Explorer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f7fb">
+    <title>Reel Good — Movie Library</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f8; }
-        .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        select, button { padding: 8px 12px; font-size: 14px; margin-right: 10px; }
-        ul { list-style-type: none; padding: 0; margin-top: 20px; }
-        li { background: #eef2f5; margin: 5px 0; padding: 10px; border-radius: 4px; }
+        :root {
+            color-scheme: light;
+            --ink: #19233b;
+            --muted: #69738a;
+            --line: #e7eaf1;
+            --paper: #ffffff;
+            --canvas: #f6f7fb;
+            --blue: #3456d1;
+            --blue-dark: #2945b0;
+            --lavender: #eeedff;
+            --shadow: 0 18px 48px rgb(31 43 79 / 8%);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background: var(--canvas);
+            font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        button, input { font: inherit; }
+        button { cursor: pointer; }
+
+        .topbar {
+            height: 76px;
+            padding: 0 max(24px, calc((100vw - 1180px) / 2));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--line);
+            background: rgb(255 255 255 / 88%);
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 11px;
+            color: var(--ink);
+            text-decoration: none;
+            font-size: 17px;
+            font-weight: 760;
+            letter-spacing: -.04em;
+        }
+
+        .brand-mark {
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            border-radius: 11px;
+            color: #fff;
+            background: var(--blue);
+            font-size: 18px;
+            letter-spacing: 0;
+        }
+
+        .topbar-note {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #36aa79;
+            box-shadow: 0 0 0 4px #e5f5ee;
+        }
+
+        main {
+            width: min(1180px, calc(100% - 48px));
+            margin: 0 auto;
+            padding: 54px 0 76px;
+        }
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            min-height: 270px;
+            padding: 42px 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 32px;
+            border: 1px solid #e8e9fb;
+            border-radius: 24px;
+            background:
+                radial-gradient(ellipse at 90% 16%, rgb(201 195 255 / 60%), transparent 36%),
+                linear-gradient(115deg, #fff 8%, #f0f0ff 100%);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-copy { max-width: 610px; }
+
+        .eyebrow {
+            margin: 0 0 13px;
+            color: var(--blue);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            max-width: 600px;
+            margin: 0;
+            font-size: clamp(34px, 5vw, 53px);
+            font-weight: 760;
+            letter-spacing: -.055em;
+            line-height: 1.04;
+        }
+
+        .hero-copy > p:last-child {
+            max-width: 490px;
+            margin: 17px 0 0;
+            color: var(--muted);
+            font-size: 16px;
+        }
+
+        .hero-art {
+            width: 190px;
+            height: 190px;
+            flex: 0 0 190px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgb(255 255 255 / 85%);
+            border-radius: 42px;
+            color: #fff;
+            background: linear-gradient(145deg, #6679e7, #8e70db 55%, #d19add);
+            box-shadow: 0 22px 44px rgb(80 84 181 / 25%), inset 0 1px 0 rgb(255 255 255 / 40%);
+            transform: rotate(4deg);
+        }
+
+        .hero-art span {
+            font-size: 74px;
+            filter: drop-shadow(0 8px 12px rgb(42 38 103 / 25%));
+            transform: rotate(-4deg);
+        }
+
+        .library-heading {
+            margin: 48px 0 20px;
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 25px;
+            font-weight: 740;
+            letter-spacing: -.04em;
+        }
+
+        .result-count {
+            margin: 5px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .search {
+            width: min(290px, 100%);
+            height: 44px;
+            padding: 0 14px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            outline: none;
+            color: var(--ink);
+            background: var(--paper);
+            transition: border-color .18s, box-shadow .18s;
+        }
+
+        .search:focus {
+            border-color: #8795e8;
+            box-shadow: 0 0 0 3px rgb(52 86 209 / 12%);
+        }
+
+        .toolbar {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter {
+            min-height: 38px;
+            padding: 0 15px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            color: #59647b;
+            background: var(--paper);
+            font-size: 13px;
+            font-weight: 650;
+            transition: color .15s, background .15s, border-color .15s;
+        }
+
+        .filter:hover { border-color: #c7cdef; color: var(--blue); }
+        .filter[aria-pressed="true"] {
+            border-color: var(--blue);
+            color: #fff;
+            background: var(--blue);
+        }
+
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+        }
+
+        .movie-card {
+            overflow: hidden;
+            min-width: 0;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: var(--paper);
+            box-shadow: 0 5px 20px rgb(31 43 79 / 4%);
+            transition: box-shadow .2s, transform .2s;
+        }
+
+        .movie-card:hover {
+            box-shadow: 0 15px 32px rgb(31 43 79 / 10%);
+            transform: translateY(-3px);
+        }
+
+        .movie-art {
+            position: relative;
+            min-height: 185px;
+            padding: 20px;
+            display: flex;
+            align-items: end;
+            overflow: hidden;
+            color: #fff;
+            background: linear-gradient(135deg, #8e80d6, #5d68b9);
+        }
+
+        .movie-art::before, .movie-art::after {
+            position: absolute;
+            content: "";
+            border: 1px solid rgb(255 255 255 / 22%);
+            border-radius: 50%;
+        }
+
+        .movie-art::before {
+            width: 220px;
+            height: 220px;
+            top: -115px;
+            right: -34px;
+        }
+
+        .movie-art::after {
+            width: 160px;
+            height: 160px;
+            top: -79px;
+            right: -4px;
+        }
+
+        .movie-card[data-category="drama"] .movie-art {
+            background: linear-gradient(135deg, #4b667d, #8293a4);
+        }
+
+        .movie-card[data-category="comedy"] .movie-art {
+            background: linear-gradient(135deg, #df925d, #e7bd7a);
+        }
+
+        .movie-card[data-category="thriller"] .movie-art {
+            background: linear-gradient(135deg, #3f536e, #625b92);
+        }
+
+        .art-letter {
+            position: absolute;
+            top: 12px;
+            right: 21px;
+            color: rgb(255 255 255 / 29%);
+            font-size: 92px;
+            font-weight: 800;
+            letter-spacing: -.08em;
+            line-height: 1;
+        }
+
+        .movie-art-label {
+            z-index: 1;
+            max-width: 85%;
+            font-size: 19px;
+            font-weight: 730;
+            letter-spacing: -.035em;
+            line-height: 1.12;
+            text-shadow: 0 2px 12px rgb(0 0 0 / 17%);
+        }
+
+        .movie-info { padding: 18px 19px 20px; }
+
+        .movie-meta {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .category-tag {
+            padding: 3px 8px;
+            border-radius: 6px;
+            color: #5450a1;
+            background: var(--lavender);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .07em;
+            text-transform: uppercase;
+        }
+
+        [data-category="comedy"] .category-tag { color: #a55a27; background: #fff0e5; }
+        [data-category="thriller"] .category-tag { color: #405576; background: #eaf0f8; }
+        [data-category="drama"] .category-tag { color: #416252; background: #e7f3ec; }
+
+        .movie-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 720;
+            letter-spacing: -.025em;
+            line-height: 1.28;
+        }
+
+        .movie-detail {
+            margin: 7px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .ai-panel {
+            margin-top: 30px;
+            padding: 23px 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 22px;
+            border: 1px solid #e1e3f7;
+            border-radius: 18px;
+            background: linear-gradient(110deg, #fff, #f2f1ff);
+        }
+
+        .ai-copy { min-width: 0; flex: 1; }
+
+        .ai-heading {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            font-size: 16px;
+            font-weight: 730;
+            letter-spacing: -.02em;
+        }
+
+        .ai-heading span {
+            width: 27px;
+            height: 27px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: #e6e5ff;
+            font-size: 14px;
+        }
+
+        .ai-description, .ai-result {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+
+        .ai-prompt {
+            width: 100%;
+            min-height: 44px;
+            margin-top: 13px;
+            padding: 10px 13px;
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            outline: none;
+            color: var(--ink);
+            background: var(--paper);
+            font-size: 13px;
+            transition: border-color .18s, box-shadow .18s;
+        }
+
+        .ai-prompt:focus {
+            border-color: #8795e8;
+            box-shadow: 0 0 0 3px rgb(52 86 209 / 12%);
+        }
+
+        .ai-result:not(:empty) {
+            max-width: 760px;
+            margin-top: 13px;
+            padding: 13px 15px;
+            border: 1px solid #e5e6f4;
+            border-radius: 11px;
+            color: #38435d;
+            background: rgb(255 255 255 / 80%);
+        }
+
+        .ai-button, .retry-button {
+            min-height: 42px;
+            flex: 0 0 auto;
+            padding: 0 16px;
+            border: 0;
+            border-radius: 11px;
+            color: #fff;
+            background: var(--blue);
+            font-size: 13px;
+            font-weight: 700;
+            transition: background .15s, transform .15s;
+        }
+
+        .ai-button:hover, .retry-button:hover { background: var(--blue-dark); }
+        .ai-button:active, .retry-button:active { transform: scale(.98); }
+        .ai-button:disabled { cursor: wait; opacity: .7; }
+
+        .state-card {
+            grid-column: 1 / -1;
+            padding: 44px 20px;
+            border: 1px dashed #d8dce8;
+            border-radius: 16px;
+            color: var(--muted);
+            background: rgb(255 255 255 / 70%);
+            text-align: center;
+        }
+
+        .state-card strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--ink);
+            font-size: 15px;
+        }
+
+        .state-card .retry-button { margin-top: 15px; }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (max-width: 800px) {
+            .hero { padding: 34px; }
+            .hero-art { width: 145px; height: 145px; flex-basis: 145px; }
+            .hero-art span { font-size: 58px; }
+            .movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 580px) {
+            .topbar { height: 64px; padding: 0 20px; }
+            .topbar-note { font-size: 11px; }
+            main { width: min(100% - 32px, 460px); padding: 28px 0 48px; }
+            .hero { min-height: 0; padding: 27px 24px; border-radius: 19px; }
+            .hero-art { display: none; }
+            .hero-copy > p:last-child { font-size: 14px; }
+            .library-heading { margin-top: 34px; align-items: start; flex-direction: column; }
+            .search { width: 100%; }
+            .toolbar { align-items: start; flex-direction: column; }
+            .filters { gap: 7px; }
+            .filter { padding: 0 12px; }
+            .movie-grid { grid-template-columns: 1fr; gap: 13px; }
+            .movie-art { min-height: 155px; }
+            .ai-panel { padding: 19px; align-items: start; flex-direction: column; }
+            .ai-button { width: 100%; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>🎬 Movie Category Explorer</h2>
-        <select id="categorySelect">
-            <option value="">All Categories</option>
-            <option value="drama">Drama</option>
-            <option value="comedy">Comedy</option>
-            <option value="thriller">Thriller</option>
-        </select>
-        <button onclick="fetchMovies()">Filter Movies</button>
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Reel Good home">
+            <span class="brand-mark" aria-hidden="true">▶</span>
+            Reel Good
+        </a>
+        <div class="topbar-note"><span class="online-dot" aria-hidden="true"></span> Your movie library</div>
+    </header>
 
-        <ul id="movieList"></ul>
-    </div>
+    <main>
+        <section class="hero" aria-labelledby="hero-title">
+            <div class="hero-copy">
+                <p class="eyebrow">A little something for movie night</p>
+                <h1 id="hero-title">Find your next<br>favorite film.</h1>
+                <p>Browse a handpicked collection by category, then let your local AI guide help make the choice.</p>
+            </div>
+            <div class="hero-art" aria-hidden="true"><span>▶</span></div>
+        </section>
+
+        <section aria-labelledby="library-title">
+            <div class="library-heading">
+                <div>
+                    <h2 id="library-title">Explore the collection</h2>
+                    <p id="resultCount" class="result-count" aria-live="polite">Loading movies…</p>
+                </div>
+                <label>
+                    <span class="sr-only">Search movies</span>
+                    <input id="searchInput" class="search" type="search" placeholder="Search by title…" autocomplete="off">
+                </label>
+            </div>
+
+            <div class="toolbar">
+                <div class="filters" role="group" aria-label="Filter movies by category">
+                    <button class="filter" type="button" data-category="" aria-pressed="true">All movies</button>
+                    <button class="filter" type="button" data-category="drama" aria-pressed="false">Drama</button>
+                    <button class="filter" type="button" data-category="comedy" aria-pressed="false">Comedy</button>
+                    <button class="filter" type="button" data-category="thriller" aria-pressed="false">Thriller</button>
+                </div>
+            </div>
+
+            <div id="movieGrid" class="movie-grid" aria-live="polite" aria-busy="true"></div>
+        </section>
+
+        <section class="ai-panel" aria-labelledby="ai-title">
+            <div class="ai-copy">
+                <h2 id="ai-title" class="ai-heading"><span aria-hidden="true">✦</span> Ask your AI movie guide</h2>
+                <p class="ai-description">Tell Gemma what you feel like watching. It will pick from your selected collection, without repeating recent suggestions.</p>
+                <label>
+                    <span class="sr-only">Describe the kind of movie you want</span>
+                    <input id="preferenceInput" class="ai-prompt" type="text" maxlength="240" placeholder="e.g. something clever and uplifting, with a twist">
+                </label>
+                <p id="aiResult" class="ai-result" aria-live="polite"></p>
+            </div>
+            <button id="recommendButton" class="ai-button" type="button">Ask Gemma</button>
+        </section>
+    </main>
 
     <script>
-        async function fetchMovies() {
-            const category = document.getElementById('categorySelect').value;
-            // Updated port to 5001
-            const response = await fetch(`http://localhost:5001/api/movies?category=${category}`);
-            const data = await response.json();
+        const movieGrid = document.getElementById("movieGrid");
+        const resultCount = document.getElementById("resultCount");
+        const searchInput = document.getElementById("searchInput");
+        const aiResult = document.getElementById("aiResult");
+        const preferenceInput = document.getElementById("preferenceInput");
+        const recommendButton = document.getElementById("recommendButton");
+        let activeCategory = "";
+        let movies = [];
+        const seenRecommendations = new Map();
 
-            const list = document.getElementById('movieList');
-            list.innerHTML = '';
+        function showState(title, message, retry = false) {
+            movieGrid.replaceChildren();
+            const state = document.createElement("div");
+            state.className = "state-card";
+            const heading = document.createElement("strong");
+            heading.textContent = title;
+            const description = document.createElement("span");
+            description.textContent = message;
+            state.append(heading, description);
+            if (retry) {
+                const button = document.createElement("button");
+                button.className = "retry-button";
+                button.type = "button";
+                button.textContent = "Try again";
+                button.addEventListener("click", () => fetchMovies());
+                state.append(button);
+            }
+            movieGrid.append(state);
+        }
 
-            if (!data.movies || data.movies.length === 0) {
-                list.innerHTML = '<li>No movies found.</li>';
+        function renderMovies() {
+            const searchTerm = searchInput.value.trim().toLowerCase();
+            const visibleMovies = movies.filter(movie =>
+                String(movie.title || "").toLowerCase().includes(searchTerm)
+            );
+
+            resultCount.textContent = `${visibleMovies.length} ${visibleMovies.length === 1 ? "movie" : "movies"}`;
+            movieGrid.replaceChildren();
+
+            if (visibleMovies.length === 0) {
+                showState("No movies found", searchTerm ? "Try a different title or category." : "There are no movies in this category yet.");
                 return;
             }
 
-            data.movies.forEach(movie => {
-                const li = document.createElement('li');
-                li.textContent = `${movie.title} (${movie.year}) - [${movie.category.toUpperCase()}]`;
-                list.appendChild(li);
+            visibleMovies.forEach(movie => {
+                const category = String(movie.category || "movie").toLowerCase();
+                const title = String(movie.title || "Untitled movie");
+                const card = document.createElement("article");
+                card.className = "movie-card";
+                card.dataset.category = category;
+
+                const artwork = document.createElement("div");
+                artwork.className = "movie-art";
+                artwork.setAttribute("aria-hidden", "true");
+                const letter = document.createElement("span");
+                letter.className = "art-letter";
+                letter.textContent = title.charAt(0).toUpperCase();
+                const artTitle = document.createElement("span");
+                artTitle.className = "movie-art-label";
+                artTitle.textContent = title;
+                artwork.append(letter, artTitle);
+
+                const info = document.createElement("div");
+                info.className = "movie-info";
+                const meta = document.createElement("div");
+                meta.className = "movie-meta";
+                const tag = document.createElement("span");
+                tag.className = "category-tag";
+                tag.textContent = category;
+                const year = document.createElement("span");
+                year.textContent = movie.year ? String(movie.year) : "Year not listed";
+                meta.append(tag, year);
+
+                const heading = document.createElement("h3");
+                heading.className = "movie-title";
+                heading.textContent = title;
+                const detail = document.createElement("p");
+                detail.className = "movie-detail";
+                detail.textContent = Array.isArray(movie.themes) && movie.themes.length
+                    ? movie.themes.join(" · ")
+                    : "A pick from your movie collection";
+                info.append(meta, heading, detail);
+                card.append(artwork, info);
+                movieGrid.append(card);
             });
         }
 
-        // Initial load
+        async function fetchMovies() {
+            movieGrid.setAttribute("aria-busy", "true");
+            resultCount.textContent = "Loading movies…";
+            showState("Loading your collection", "Just a moment…");
+
+            try {
+                const params = new URLSearchParams();
+                if (activeCategory) params.set("category", activeCategory);
+                const response = await fetch(`/api/movies?${params.toString()}`);
+                if (!response.ok) throw new Error("Could not load movies. Please try again.");
+                const data = await response.json();
+                if (!Array.isArray(data.movies)) throw new Error("The movie service returned an unexpected response.");
+                movies = data.movies;
+                renderMovies();
+            } catch (error) {
+                movies = [];
+                resultCount.textContent = "Movies unavailable";
+                showState("We couldn't load the movies", error.message, true);
+            } finally {
+                movieGrid.setAttribute("aria-busy", "false");
+            }
+        }
+
+        document.querySelectorAll(".filter").forEach(button => {
+            button.addEventListener("click", () => {
+                activeCategory = button.dataset.category || "";
+                aiResult.textContent = "";
+                document.querySelectorAll(".filter").forEach(filter => {
+                    filter.setAttribute("aria-pressed", String(filter === button));
+                });
+                fetchMovies();
+            });
+        });
+
+        searchInput.addEventListener("input", renderMovies);
+        preferenceInput.addEventListener("keydown", event => {
+            if (event.key === "Enter") recommendButton.click();
+        });
+
+        recommendButton.addEventListener("click", async () => {
+            let seenTitles = seenRecommendations.get(activeCategory);
+            if (!seenTitles) {
+                seenTitles = new Set();
+                seenRecommendations.set(activeCategory, seenTitles);
+            }
+            if (movies.length > 0 && seenTitles.size >= movies.length) {
+                seenTitles.clear();
+                aiResult.textContent = "You’ve seen every movie in this collection. Starting a fresh round.";
+            }
+
+            recommendButton.disabled = true;
+            recommendButton.textContent = "Thinking…";
+            if (!aiResult.textContent.includes("Starting a fresh round")) {
+                aiResult.textContent = "Gemma is looking for a movie that matches your request.";
+            }
+            try {
+                const response = await fetch("/api/recommendations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        category: activeCategory,
+                        preference: preferenceInput.value.trim(),
+                        exclude_titles: [...seenTitles]
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "The AI guide could not make a suggestion.");
+                aiResult.textContent = data.recommendation;
+                data.recommendations.forEach(movie => seenTitles.add(movie.title));
+            } catch (error) {
+                aiResult.textContent = error.message;
+            } finally {
+                recommendButton.disabled = false;
+                recommendButton.textContent = "Ask Gemma";
+            }
+        });
+
         fetchMovies();
     </script>
 </body>

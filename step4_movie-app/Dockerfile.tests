@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+WORKDIR /workspace
+
+ENV PYTHONDONTWRITEBYTECODE=1
+
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/workspace/backend
+
+CMD ["pytest", "-q", "--junitxml=test-results.xml", "--cov=backend", "--cov-report=xml:coverage.xml", "backend/test_app.py", "mongo/test_db.py"]

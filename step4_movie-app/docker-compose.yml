@@ -1,0 +1,113 @@
+services:
+  movie-db:
+    image: mongo:6.0
+    volumes:
+      - movie_data:/data/db
+      - ./mongo/init.json:/docker-entrypoint-initdb.d/init.json:ro
+      - ./mongo/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    networks:
+      - movie-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  movie-api:
+    build:
+      context: ./backend
+    environment:
+      MONGO_URI: mongodb://movie-db:27017/movies_db
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:1b
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    networks:
+      - movie-net
+
+  ollama:
+    image: ollama/ollama
+    profiles: ["ai"]
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - movie-net
+
+  movie-ui:
+    build:
+      context: ./frontend
+    networks:
+      - movie-net
+
+  nginx-proxy:
+    image: nginx:alpine
+    ports:
+      - "8181:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - movie-ui
+      - movie-api
+    networks:
+      - movie-net
+
+  sonarqube:
+    profiles: ["analysis"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sonarqube
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - movie-net
+
+  tests:
+    profiles: ["analysis"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace/backend
+    networks:
+      - movie-net
+    command:
+      - pytest
+      - -q
+      - --junitxml=test-results.xml
+      - --cov=backend
+      - --cov-report=xml:coverage.xml
+      - backend/test_app.py
+      - mongo/test_db.py
+
+  sonar-scanner:
+    profiles: ["analysis"]
+    image: sonarsource/sonar-scanner-cli:latest
+    depends_on:
+      - sonarqube
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN:-}
+    volumes:
+      - .:/usr/src
+    networks:
+      - movie-net
+
+volumes:
+  movie_data:
+  ollama_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+
+networks:
+  movie-net:
+    driver: bridge
