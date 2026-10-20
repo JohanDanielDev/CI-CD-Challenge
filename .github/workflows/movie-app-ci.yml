@@ -306,3 +306,63 @@ jobs:
           docker push "$DOCKERHUB_USERNAME/movie-api:$channel"
           docker push "$DOCKERHUB_USERNAME/movie-ui:$version"
           docker push "$DOCKERHUB_USERNAME/movie-ui:$channel"
+
+  build-report-site:
+    name: Build browsable CI report site
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: sonarqube
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        with:
+          name: test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-reports/tests
+
+      - name: Download SonarQube reports
+        uses: actions/download-artifact@v4
+        with:
+          name: sonarqube-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-reports/sonar
+
+      - name: Generate static report site
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 .github/scripts/build_ci_report.py \
+            --tests ci-reports/tests/surefire-reports/TEST-pytest.xml \
+            --coverage ci-reports/tests/coverage.xml \
+            --sonar-dir ci-reports/sonar \
+            --output-dir _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-report-site:
+    name: Publish CI reports to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-report-site
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy report site
+        id: deployment
+        uses: actions/deploy-pages@v4
