@@ -82,12 +82,14 @@ the analysis instructions below.
 The workflow at `../.github/workflows/movie-app-ci.yml` runs on a self-hosted runner for pull
 requests targeting `dev` or `main`, and for pushes to either branch. It separates the pipeline
 into ordered jobs: secret scan, application startup and tests, SonarQube analysis, then Docker
-Hub publishing. Test and SonarQube reports are uploaded as workflow artifacts. Pull requests do
-not publish images.
+Hub publishing. On successful pushes to `main`, the test, coverage, and SonarQube results are
+also published as a browsable static report site on GitHub Pages. Pull requests do not publish
+images or deploy the report site; their reports remain available as workflow artifacts.
 
 Register a self-hosted Linux runner under this repository's **Settings > Actions > Runners**.
-Ensure it can run Docker Compose, `curl`, `openssl`, and Python 3. Create the `movie-api` and
-`movie-ui` repositories in your Docker Hub account. Add these repository Actions secrets under
+Ensure it can run Docker Compose, `curl`, `openssl`, and Python 3.10 or later. Create the `movie-api` and
+`movie-ui` repositories in your Docker Hub account. In **Settings > Pages**, choose **GitHub
+Actions** as the build and deployment source. Add these repository Actions secrets under
 **Settings > Secrets and variables > Actions**:
 
 | Secret | Value |
@@ -101,6 +103,10 @@ Do not put these values in the repository or send them in chat. These are the Gi
 needed by the workflow. The workflow creates a temporary SonarQube token inside its disposable CI
 SonarQube instance, then exports SonarQube issues and project metrics as JSON artifacts before
 removing the temporary server.
+
+The Pages deployment contains static HTML only. It provides a readable browser view of the
+reports; it does not run the app, API, MongoDB, or SonarQube. The latest successful `main`
+deployment replaces the report site.
 
 The workflow publishes `movie-api` and `movie-ui` with an immutable branch-and-commit tag, plus
 `dev-latest` for pushes to `dev` or `latest` for pushes to `main`. Because PR code runs directly
