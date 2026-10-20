@@ -6,6 +6,10 @@ services:
     volumes: !override
       - ./nginx/bluegreen.conf.template:/etc/nginx/templates/default.conf.template:ro
     environment:
-      API_UPSTREAM: movie-api-blue
-      UI_UPSTREAM: movie-ui-blue
+      API_UPSTREAM: ${API_UPSTREAM:-movie-api-blue}
+      UI_UPSTREAM: ${UI_UPSTREAM:-movie-ui-blue}
       NGINX_ENVSUBST_FILTER: "^(API_UPSTREAM|UI_UPSTREAM)"
+
+volumes:
+  movie_data:
+    name: ${MONGO_VOLUME_NAME:?Set MONGO_VOLUME_NAME}
