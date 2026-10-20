@@ -6,7 +6,9 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
-def read_test_report(path: Path) -> tuple[dict[str, int | str], list[dict[str, str]]]:
+def read_test_report(
+    path: Path, report_type: str = "Unit"
+) -> tuple[dict[str, int | float], list[dict[str, str]]]:
     if not path.is_file():
         raise FileNotFoundError(f"JUnit test report not found: {path}")
 
@@ -33,6 +35,7 @@ def read_test_report(path: Path) -> tuple[dict[str, int | str], list[dict[str, s
                     "time": case.get("time", ""),
                     "outcome": outcome,
                     "details": details.strip(),
+                    "report_type": report_type,
                 }
             )
     return totals, cases
@@ -111,8 +114,9 @@ def build_page(
     run_url = f"https://github.com/{repository}/actions/runs/{run_id}" if run_id else ""
     suite_rows = "".join(
         "<tr>"
-        f"<td>{cell(case['outcome'])}</td><td>{cell(case['classname'])}</td>"
-        f"<td>{cell(case['name'])}</td><td>{cell(case['time'])}</td>"
+        f"<td>{cell(case['report_type'])}</td><td>{cell(case['outcome'])}</td>"
+        f"<td>{cell(case['classname'])}</td><td>{cell(case['name'])}</td>"
+        f"<td>{cell(case['time'])}</td>"
         f"<td><details><summary>Details</summary><pre>{cell(case['details'])}</pre></details></td>"
         "</tr>"
         for case in test_cases
@@ -173,8 +177,8 @@ def build_page(
   </section>
   <h2>Test cases</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Result</th><th>Suite</th><th>Test</th><th>Seconds</th><th>Details</th></tr></thead>
-    <tbody>{suite_rows or '<tr><td colspan="5">No test cases were reported.</td></tr>'}</tbody>
+    <thead><tr><th>Type</th><th>Result</th><th>Suite</th><th>Test</th><th>Seconds</th><th>Details</th></tr></thead>
+    <tbody>{suite_rows or '<tr><td colspan="6">No test cases were reported.</td></tr>'}</tbody>
   </table></div>
   <h2>SonarQube issues ({len(issues)})</h2>
   <div class="table-wrap"><table>
@@ -189,12 +193,19 @@ def build_page(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create a static HTML CI report site.")
     parser.add_argument("--tests", type=Path, required=True, help="JUnit XML report path")
+    parser.add_argument("--e2e", type=Path, help="Optional end-to-end JUnit XML report path")
     parser.add_argument("--coverage", type=Path, required=True, help="Coverage XML report path")
     parser.add_argument("--sonar-dir", type=Path, required=True, help="Directory with Sonar JSON")
     parser.add_argument("--output-dir", type=Path, required=True, help="Pages site output directory")
     args = parser.parse_args()
 
     totals, cases = read_test_report(args.tests)
+    if args.e2e:
+        e2e_totals, e2e_cases = read_test_report(args.e2e, report_type="End-to-end")
+        for key in ("tests", "failures", "errors", "skipped"):
+            totals[key] += e2e_totals[key]
+        totals["time"] += e2e_totals["time"]
+        cases.extend(e2e_cases)
     coverage = read_coverage(args.coverage)
     sonar, issues = read_sonar(args.sonar_dir)
     args.output_dir.mkdir(parents=True, exist_ok=True)
