@@ -78,6 +78,38 @@ def test_get_recommendations_rejects_too_long_preference(client):
     assert res.status_code == 400
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"preference": 123}, "Preference must be a string."),
+        ({"exclude_titles": "Superbad"}, "exclude_titles must be a list"),
+        ({"exclude_titles": ["Superbad", 123]}, "exclude_titles must be a list"),
+        ({"exclude_titles": ["Movie"] * 101}, "exclude_titles must be a list"),
+    ],
+)
+def test_get_recommendations_rejects_invalid_preference_and_exclusions(client, payload, message):
+    res = client.post("/api/recommendations", json=payload)
+
+    assert res.status_code == 400
+    assert message in res.get_json()["error"]
+
+
+def test_get_recommendations_rejects_non_json_payload(client):
+    res = client.post("/api/recommendations", data="not-json", content_type="application/json")
+
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "A JSON object is required."
+
+
+def test_get_recommendations_rejects_malformed_model_json(client):
+    model_response = b'{"response":"this is not JSON"}'
+    with patch("app.urlopen", return_value=BytesIO(model_response)):
+        res = client.post("/api/recommendations", json={"category": "comedy"})
+
+    assert res.status_code == 502
+    assert res.get_json()["error"] == "The AI guide returned an invalid response."
+
+
 def test_get_recommendations_reports_when_all_movies_were_seen(client):
     res = client.post("/api/recommendations", json={
         "category": "comedy",

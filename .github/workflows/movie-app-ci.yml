@@ -73,6 +73,8 @@ jobs:
         run: |
           echo "LOCAL_UID=$(id -u)" >>"$GITHUB_ENV"
           echo "LOCAL_GID=$(id -g)" >>"$GITHUB_ENV"
+          mkdir -p e2e-results
+          chmod 777 e2e-results
 
       - name: Build and run the application
         run: |
@@ -108,7 +110,14 @@ jobs:
             -f ../.github/compose.ci.yaml \
             --profile analysis run --build --rm tests
 
-      - name: Upload Surefire and coverage reports
+      - name: Run end-to-end browser tests
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis run --build --rm e2e
+
+      - name: Upload unit, coverage, and end-to-end reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -117,6 +126,7 @@ jobs:
           path: |
             step4_movie-app/surefire-reports/TEST-pytest.xml
             step4_movie-app/coverage.xml
+            step4_movie-app/e2e-results/e2e.xml
 
       - name: Stop app containers and remove temporary database
         if: always()
@@ -342,6 +352,7 @@ jobs:
           python3 .github/scripts/build_ci_report.py \
             --tests ci-reports/tests/surefire-reports/TEST-pytest.xml \
             --coverage ci-reports/tests/coverage.xml \
+            --e2e ci-reports/tests/e2e-results/e2e.xml \
             --sonar-dir ci-reports/sonar \
             --output-dir _site
 

@@ -3,9 +3,13 @@
 .pytest_cache/
 __pycache__/
 .scannerwork/
+actions-runner/
+actions-runner/_work/
+e2e/node_modules/
 coverage.xml
 test-results.xml
 surefire-reports/
+e2e-results/
 gitleaks.sarif
 sonar-issues.json
 sonar-summary.json
