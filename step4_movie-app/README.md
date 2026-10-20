@@ -28,8 +28,26 @@ queries MongoDB over the internal container network, and excludes `_id` from its
 From `step4_movie-app`, start the reverse proxy, frontend, API, and seeded MongoDB database:
 
 ```bash
+cp .env.example .env
+# Edit .env and replace both placeholder values with private credentials.
 docker compose up --build -d
 ```
+
+MongoDB authentication uses the root username and password from `.env`. Compose passes the
+credentials to the database and API containers without embedding them in the images. Keep `.env`
+private; it is excluded from Git.
+
+If you already have a `movie_data` volume created before authentication was enabled, MongoDB
+will not automatically add the root user to that existing database. Start only `movie-db`, then
+open its Mongo shell and create the root user using the username from `.env`; enter the password
+with `passwordPrompt()` so it is not saved in shell history:
+
+```bash
+docker compose up -d movie-db
+docker compose exec movie-db mongosh admin
+```
+
+At the `mongosh` prompt, run `db.createUser({ user: "<MONGO_USERNAME>", pwd: passwordPrompt(), roles: [{ role: "root", db: "admin" }] })`, replacing `<MONGO_USERNAME>` with the value from `.env`, then start the remaining services with `docker compose up --build -d`.
 
 Open the app at [http://localhost:8181](http://localhost:8181). The API is available through
 the reverse proxy at [http://localhost:8181/api/movies](http://localhost:8181/api/movies).
@@ -58,6 +76,36 @@ titles are inserted.
 
 The SonarQube and test services are available separately under the `analysis` profile; see
 the analysis instructions below.
+
+## GitHub Actions CI
+
+The workflow at `../.github/workflows/movie-app-ci.yml` runs on a self-hosted runner for pull
+requests targeting `dev` or `main`, and for pushes to either branch. It separates the pipeline
+into ordered jobs: secret scan, application startup and tests, SonarQube analysis, then Docker
+Hub publishing. Test and SonarQube reports are uploaded as workflow artifacts. Pull requests do
+not publish images.
+
+Register a self-hosted Linux runner under this repository's **Settings > Actions > Runners**.
+Ensure it can run Docker Compose, `curl`, `openssl`, and Python 3. Create the `movie-api` and
+`movie-ui` repositories in your Docker Hub account. Add these repository Actions secrets under
+**Settings > Secrets and variables > Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | A Docker Hub access token with permission to push images |
+| `MONGO_USERNAME` | MongoDB root username for CI |
+| `MONGO_PASSWORD` | MongoDB root password for CI |
+
+Do not put these values in the repository or send them in chat. These are the GitHub secrets
+needed by the workflow. The workflow creates a temporary SonarQube token inside its disposable CI
+SonarQube instance, then exports SonarQube issues and project metrics as JSON artifacts before
+removing the temporary server.
+
+The workflow publishes `movie-api` and `movie-ui` with an immutable branch-and-commit tag, plus
+`dev-latest` for pushes to `dev` or `latest` for pushes to `main`. Because PR code runs directly
+on your self-hosted machine, only enable this workflow for repositories and contributors you
+trust.
 
 ## Start the local Gemma movie guide
 
@@ -187,8 +235,8 @@ docker compose run --rm tests
 docker compose run --rm sonar-scanner
 ```
 
-The tests create `test-results.xml` and `coverage.xml` in this directory. The scanner reads
-those reports and publishes the analysis to the SonarQube project `movie-app`. In the SonarQube
+The tests create `surefire-reports/TEST-pytest.xml` and `coverage.xml` in this directory. The
+scanner reads those reports and publishes the analysis to the SonarQube project `movie-app`. In the SonarQube
 UI, open **Projects > Movie Explorer** to view the results.
 
 To stop SonarQube while keeping its data:
