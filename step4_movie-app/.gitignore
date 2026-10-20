@@ -1,5 +1,7 @@
 .coverage
 .env
+.env.*
+!.env.example
 _site/
 ci-reports/
 .pytest_cache/
@@ -8,9 +10,15 @@ __pycache__/
 coverage.xml
 test-results.xml
 surefire-reports/
+e2e-results/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
 gitleaks.sarif
 sonar-issues.json
 sonar-summary.json
 .vscode/
 actions-runner/
-actions-runner/_work/
+venv/
+.venv/
+env/

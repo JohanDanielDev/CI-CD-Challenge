@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name _;
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location /api/ {
+        set $api_upstream "${API_UPSTREAM}:5000";
+        proxy_pass http://$api_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        set $ui_upstream "${UI_UPSTREAM}:80";
+        proxy_pass http://$ui_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

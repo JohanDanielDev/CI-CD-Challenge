@@ -1,6 +1,7 @@
 services:
   movie-db:
     image: mongo:6.0
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in step4_movie-app/.env}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in step4_movie-app/.env}
@@ -19,6 +20,7 @@ services:
 
   movie-api:
     image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
     build:
       context: ./backend
     environment:
@@ -33,6 +35,70 @@ services:
         condition: service_healthy
     networks:
       - movie-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - from urllib.request import urlopen; urlopen("http://127.0.0.1:5000/api/movies?category=comedy", timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  movie-api-blue:
+    profiles: ["blue"]
+    image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://movie-db:27017/movies_db
+      MONGO_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD}
+      MONGO_AUTH_SOURCE: admin
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:1b
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    networks:
+      - movie-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - from urllib.request import urlopen; urlopen("http://127.0.0.1:5000/api/movies?category=comedy", timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  movie-api-green:
+    profiles: ["green"]
+    image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://movie-db:27017/movies_db
+      MONGO_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD}
+      MONGO_AUTH_SOURCE: admin
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:1b
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    networks:
+      - movie-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - from urllib.request import urlopen; urlopen("http://127.0.0.1:5000/api/movies?category=comedy", timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   ollama:
     image: ollama/ollama:0.6.8
@@ -44,13 +110,41 @@ services:
 
   movie-ui:
     image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-local}
+    restart: unless-stopped
     build:
       context: ./frontend
     networks:
       - movie-net
 
+  movie-ui-blue:
+    profiles: ["blue"]
+    image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    networks:
+      - movie-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+  movie-ui-green:
+    profiles: ["green"]
+    image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    networks:
+      - movie-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
   nginx-proxy:
     image: nginx:1.29-alpine
+    restart: unless-stopped
     ports:
       - "8181:80"
     volumes:
@@ -92,6 +186,20 @@ services:
       - sh
       - -c
       - mkdir -p surefire-reports && pytest -q --junitxml=surefire-reports/TEST-pytest.xml --cov=backend --cov-report=xml:coverage.xml backend/test_app.py mongo/test_db.py
+
+  e2e:
+    profiles: ["analysis"]
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    depends_on:
+      - nginx-proxy
+    environment:
+      BASE_URL: http://nginx-proxy
+    volumes:
+      - ./e2e-results:/reports
+    networks:
+      - movie-net
 
   sonar-scanner:
     profiles: ["analysis"]
