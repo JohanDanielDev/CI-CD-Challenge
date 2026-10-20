@@ -1,6 +1,9 @@
 services:
   movie-db:
     image: mongo:6.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in step4_movie-app/.env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in step4_movie-app/.env}
     volumes:
       - movie_data:/data/db
       - ./mongo/init.json:/docker-entrypoint-initdb.d/init.json:ro
@@ -15,10 +18,14 @@ services:
       start_period: 5s
 
   movie-api:
+    image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-local}
     build:
       context: ./backend
     environment:
       MONGO_URI: mongodb://movie-db:27017/movies_db
+      MONGO_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in step4_movie-app/.env}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in step4_movie-app/.env}
+      MONGO_AUTH_SOURCE: admin
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: gemma3:1b
     depends_on:
@@ -28,7 +35,7 @@ services:
       - movie-net
 
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:0.6.8
     profiles: ["ai"]
     volumes:
       - ollama_data:/root/.ollama
@@ -36,13 +43,14 @@ services:
       - movie-net
 
   movie-ui:
+    image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-local}
     build:
       context: ./frontend
     networks:
       - movie-net
 
   nginx-proxy:
-    image: nginx:alpine
+    image: nginx:1.29-alpine
     ports:
       - "8181:80"
     volumes:
@@ -72,6 +80,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.tests
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -80,24 +89,22 @@ services:
     networks:
       - movie-net
     command:
-      - pytest
-      - -q
-      - --junitxml=test-results.xml
-      - --cov=backend
-      - --cov-report=xml:coverage.xml
-      - backend/test_app.py
-      - mongo/test_db.py
+      - sh
+      - -c
+      - mkdir -p surefire-reports && pytest -q --junitxml=surefire-reports/TEST-pytest.xml --cov=backend --cov-report=xml:coverage.xml backend/test_app.py mongo/test_db.py
 
   sonar-scanner:
     profiles: ["analysis"]
-    image: sonarsource/sonar-scanner-cli:latest
+    image: sonarsource/sonar-scanner-cli:12.2
+    working_dir: /workspace
     depends_on:
       - sonarqube
     environment:
       SONAR_HOST_URL: http://sonarqube:9000
       SONAR_TOKEN: ${SONAR_TOKEN:-}
+      SCANNER_WORKDIR_PATH: /workspace/.scannerwork
     volumes:
-      - .:/usr/src
+      - .:/workspace
     networks:
       - movie-net
 

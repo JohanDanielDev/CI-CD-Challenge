@@ -12,10 +12,24 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://movie-db:27017/movies_db")
+MONGO_USERNAME = os.getenv("MONGO_USERNAME")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
+MONGO_AUTH_SOURCE = os.getenv("MONGO_AUTH_SOURCE", "admin")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:1b")
 
-client = MongoClient(MONGO_URI)
+if bool(MONGO_USERNAME) != bool(MONGO_PASSWORD):
+    raise ValueError("Both MONGO_USERNAME and MONGO_PASSWORD must be configured.")
+
+mongo_options = {}
+if MONGO_USERNAME and MONGO_PASSWORD:
+    mongo_options = {
+        "username": MONGO_USERNAME,
+        "password": MONGO_PASSWORD,
+        "authSource": MONGO_AUTH_SOURCE,
+    }
+
+client = MongoClient(MONGO_URI, **mongo_options)
 db = client.get_database("movies_db")
 
 @app.route("/api/movies", methods=["GET"])

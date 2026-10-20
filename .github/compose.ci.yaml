@@ -1,0 +1,9 @@
+services:
+  nginx-proxy:
+    ports: !reset []
+
+  sonarqube:
+    ports: !override
+      - "127.0.0.1:${SONAR_PORT:-19000}:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"

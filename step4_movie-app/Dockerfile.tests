@@ -11,4 +11,4 @@ COPY . .
 
 ENV PYTHONPATH=/workspace/backend
 
-CMD ["pytest", "-q", "--junitxml=test-results.xml", "--cov=backend", "--cov-report=xml:coverage.xml", "backend/test_app.py", "mongo/test_db.py"]
+CMD ["sh", "-c", "mkdir -p surefire-reports && pytest -q --junitxml=surefire-reports/TEST-pytest.xml --cov=backend --cov-report=xml:coverage.xml backend/test_app.py mongo/test_db.py"]
