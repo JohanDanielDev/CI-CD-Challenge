@@ -1,0 +1,11 @@
+services:
+  nginx-proxy:
+    depends_on: !override []
+    ports: !override
+      - "${APP_PORT:?Set APP_PORT}:80"
+    volumes: !override
+      - ./nginx/bluegreen.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      API_UPSTREAM: movie-api-blue
+      UI_UPSTREAM: movie-ui-blue
+      NGINX_ENVSUBST_FILTER: "^(API_UPSTREAM|UI_UPSTREAM)"

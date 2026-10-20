@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: movie-app-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   secret-scan:
@@ -74,7 +74,7 @@ jobs:
           echo "LOCAL_UID=$(id -u)" >>"$GITHUB_ENV"
           echo "LOCAL_GID=$(id -g)" >>"$GITHUB_ENV"
           mkdir -p e2e-results
-          chmod 777 e2e-results
+          rm -f coverage.xml surefire-reports/TEST-pytest.xml e2e-results/e2e.xml
 
       - name: Build and run the application
         run: |
@@ -110,7 +110,7 @@ jobs:
             -f ../.github/compose.ci.yaml \
             --profile analysis run --build --rm tests
 
-      - name: Run end-to-end browser tests
+      - name: Run browser end-to-end tests
         run: |
           docker compose \
             -f docker-compose.yml \
@@ -316,6 +316,25 @@ jobs:
           docker push "$DOCKERHUB_USERNAME/movie-api:$channel"
           docker push "$DOCKERHUB_USERNAME/movie-ui:$version"
           docker push "$DOCKERHUB_USERNAME/movie-ui:$channel"
+
+  deploy:
+    name: Blue/green deploy to self-hosted machine
+    if: github.event_name == 'push'
+    needs: publish
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      DEPLOY_ENV: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
+      MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Deploy the published version using blue/green
+        run: bash .github/scripts/deploy-blue-green.sh
 
   build-report-site:
     name: Build browsable CI report site
