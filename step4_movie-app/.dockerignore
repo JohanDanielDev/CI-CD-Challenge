@@ -10,6 +10,7 @@ e2e-results/
 coverage.xml
 test-results.xml
 surefire-reports/
+e2e-results/
 gitleaks.sarif
 sonar-issues.json
 sonar-summary.json

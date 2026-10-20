@@ -371,6 +371,7 @@ jobs:
           python3 .github/scripts/build_ci_report.py \
             --tests ci-reports/tests/surefire-reports/TEST-pytest.xml \
             --coverage ci-reports/tests/coverage.xml \
+            --e2e ci-reports/tests/e2e-results/e2e.xml \
             --sonar-dir ci-reports/sonar \
             --output-dir _site
 

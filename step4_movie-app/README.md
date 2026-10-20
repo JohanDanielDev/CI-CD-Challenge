@@ -253,13 +253,21 @@ curl -s "http://localhost:8181/api/movies?category=comedy"
 ## Run the Python tests and analyze the project with SonarQube
 
 SonarQube analyzes the test and coverage reports; `pytest` runs the tests in a separate container.
-Run these commands from `step4_movie-app`:
+The E2E tests use Playwright/Chromium in a separate container and exercise the application through
+the reverse proxy, including category filtering, search, and the AI guide request. They stub the
+AI response so the tests do not require Ollama or download a model. Run these commands from
+`step4_movie-app` after creating your `.env`:
 
 ```bash
-docker compose up -d sonarqube
+mkdir -p e2e-results
+chmod a+rwx e2e-results
+docker compose up --build -d movie-db movie-api movie-ui nginx-proxy
+docker compose --profile analysis run --build --rm tests
+docker compose --profile analysis run --build --rm e2e
 ```
 
-Wait for SonarQube at [http://localhost:9000](http://localhost:9000). On first login, use
+The Playwright JUnit report is written to `e2e-results/e2e.xml`. SonarQube and its scanner can be
+started separately when needed. Wait for SonarQube at [http://localhost:9000](http://localhost:9000). On first login, use
 `admin` / `admin`, change the password, and create a token under **My Account > Security**.
 Then set that token in your shell and run the test and analysis services:
 
@@ -268,6 +276,8 @@ export SONAR_TOKEN="paste-your-token-here"
 docker compose run --rm tests
 docker compose run --rm sonar-scanner
 ```
+
+The `analysis` profile contains the test runner, Playwright browser runner, SonarQube, and scanner.
 
 The tests create `surefire-reports/TEST-pytest.xml` and `coverage.xml` in this directory. The
 scanner reads those reports and publishes the analysis to the SonarQube project `movie-app`. In the SonarQube
