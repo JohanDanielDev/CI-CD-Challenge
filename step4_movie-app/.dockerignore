@@ -6,6 +6,7 @@ __pycache__/
 actions-runner/
 actions-runner/_work/
 e2e/node_modules/
+e2e-results/
 coverage.xml
 test-results.xml
 surefire-reports/

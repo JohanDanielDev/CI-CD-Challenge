@@ -82,15 +82,16 @@ the analysis instructions below.
 The workflow at `../.github/workflows/movie-app-ci.yml` runs on a self-hosted runner for pull
 requests targeting `dev` or `main`, and for pushes to either branch. It separates the pipeline
 into ordered jobs: secret scan, application startup and tests, SonarQube analysis, then Docker
-Hub publishing. On successful pushes to `main`, the test, coverage, and SonarQube results are
-also published as a browsable static report site on GitHub Pages. The test job runs unit tests
-against mocked data and Playwright browser tests against the real Compose stack. Pull requests
-do not publish images or deploy the report site; their reports remain available as workflow
-artifacts.
+Hub publishing. Successful pushes to `dev` and `main` are automatically deployed to the
+self-hosted machine using a blue/green strategy. On successful pushes to `main`, the test,
+coverage, and SonarQube results are also published as a browsable static report site on GitHub
+Pages. Pull requests do not publish images or deploy the app/site; their reports remain available
+as workflow artifacts.
 
 Register a self-hosted Linux runner under this repository's **Settings > Actions > Runners**.
-Ensure it can run Docker Compose, `curl`, `openssl`, and Python 3.10 or later. Create the `movie-api` and
-`movie-ui` repositories in your Docker Hub account. In **Settings > Pages**, choose **GitHub
+Ensure it can run Docker Compose v2.24.4 or later, Docker, `curl`, `openssl`, and Python 3.10 or
+later. Ports `8181` and `8182` must be available on the runner machine. Create the `movie-api`
+and `movie-ui` repositories in your Docker Hub account. In **Settings > Pages**, choose **GitHub
 Actions** as the build and deployment source. Add these repository Actions secrets under
 **Settings > Secrets and variables > Actions**:
 
@@ -105,6 +106,31 @@ Do not put these values in the repository or send them in chat. These are the Gi
 needed by the workflow. The workflow creates a temporary SonarQube token inside its disposable CI
 SonarQube instance, then exports SonarQube issues and project metrics as JSON artifacts before
 removing the temporary server.
+
+### Continuous delivery and blue/green deployment
+
+The workflow tags each published image with `<branch>-<full-commit-sha>`, then deploys that exact
+immutable version after all checks and pushes succeed:
+
+| Branch | Environment | URL on the runner machine |
+| --- | --- | --- |
+| `dev` | Staging | `http://localhost:8182` |
+| `main` | Production | `http://localhost:8181` |
+
+Each environment has its own Compose project and MongoDB volume. For each release, the workflow
+starts the inactive color with the new images, waits for health checks, verifies the UI and API,
+then reloads Nginx to switch traffic. The old color remains running as the rollback target and is
+replaced on the next deployment. If the post-switch smoke check fails, the workflow switches
+traffic back to the previous color. Concurrent pushes to the same branch are serialized so an
+in-progress switch is not canceled by a newer run.
+
+The production Compose project keeps the local Compose project name `step4_movie-app` so an
+existing MongoDB data volume is reused. Blue and green share that environment's database, so
+database changes must remain compatible with both app versions during a cutover. If an older app
+stack is running under a different Compose project, its MongoDB volume will not be reused
+automatically; back up or migrate that data before the first deployment. Stop the old stack
+without removing its volumes if it owns port `8181`. Once deployment is active, use the workflow
+rather than running `docker compose down` against either deployment project.
 
 The Pages deployment contains static HTML only. It provides a readable browser view of the
 reports; it does not run the app, API, MongoDB, or SonarQube. The latest successful `main`
