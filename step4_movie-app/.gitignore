@@ -1,0 +1,16 @@
+.coverage
+.env
+_site/
+ci-reports/
+.pytest_cache/
+__pycache__/
+.scannerwork/
+coverage.xml
+test-results.xml
+surefire-reports/
+gitleaks.sarif
+sonar-issues.json
+sonar-summary.json
+.vscode/
+actions-runner/
+actions-runner/_work/

@@ -1,0 +1,368 @@
+name: Movie app CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: movie-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: Verify secrets
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Scan tracked source for hardcoded secrets
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP:/reports" \
+            zricethezav/gitleaks:v8.24.2 \
+            detect \
+            --source=/repo \
+            --no-git \
+            --redact \
+            --report-format sarif \
+            --report-path=/reports/gitleaks.sarif \
+            --exit-code 1
+
+      - name: Upload secret scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/gitleaks.sarif
+
+  app-and-tests:
+    name: Run app and tests
+    needs: secret-scan
+    runs-on: self-hosted
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: step4_movie-app
+    env:
+      COMPOSE_PROJECT_NAME: movie-ci-${{ github.run_id }}-${{ github.run_attempt }}-tests
+      IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
+      MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify MongoDB credentials are configured
+        run: |
+          if [ -z "$MONGO_USERNAME" ] || [ -z "$MONGO_PASSWORD" ]; then
+            echo "Set MONGO_USERNAME and MONGO_PASSWORD in repository Actions secrets." >&2
+            exit 1
+          fi
+
+      - name: Configure container file ownership
+        run: |
+          echo "LOCAL_UID=$(id -u)" >>"$GITHUB_ENV"
+          echo "LOCAL_GID=$(id -g)" >>"$GITHUB_ENV"
+
+      - name: Build and run the application
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            up --build --detach movie-db movie-api movie-ui nginx-proxy
+
+          for attempt in $(seq 1 60); do
+            if docker compose \
+              -f docker-compose.yml \
+              -f ../.github/compose.ci.yaml \
+              exec -T nginx-proxy wget -qO- \
+              'http://127.0.0.1/api/movies?category=comedy' 2>/dev/null \
+              | grep -q '"count":12'; then
+              echo "Application is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            logs
+          echo "Application did not become ready." >&2
+          exit 1
+
+      - name: Run tests and generate Surefire and coverage reports
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis run --build --rm tests
+
+      - name: Upload Surefire and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            step4_movie-app/surefire-reports/TEST-pytest.xml
+            step4_movie-app/coverage.xml
+
+      - name: Stop app containers and remove temporary database
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            down --volumes --remove-orphans
+
+  sonarqube:
+    name: Run SonarQube analysis
+    needs: app-and-tests
+    runs-on: self-hosted
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: step4_movie-app
+    env:
+      COMPOSE_PROJECT_NAME: movie-ci-${{ github.run_id }}-${{ github.run_attempt }}-sonar
+      MONGO_USERNAME: ci-unused
+      MONGO_PASSWORD: ci-unused
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download Surefire and coverage reports
+        uses: actions/download-artifact@v4
+        with:
+          name: test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: step4_movie-app
+
+      - name: Start SonarQube
+        run: |
+          SONAR_PORT=$((20000 + GITHUB_RUN_ID % 10000))
+          SONAR_URL="http://localhost:$SONAR_PORT"
+          echo "SONAR_PORT=$SONAR_PORT" >>"$GITHUB_ENV"
+          echo "SONAR_URL=$SONAR_URL" >>"$GITHUB_ENV"
+          export SONAR_PORT SONAR_URL
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis up --build --detach sonarqube
+
+          for attempt in $(seq 1 90); do
+            if curl --silent --fail "$SONAR_URL/api/system/status" \
+              | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "UP" else 1)' 2>/dev/null; then
+              echo "SonarQube is ready."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis logs sonarqube
+          echo "SonarQube did not become ready." >&2
+          exit 1
+
+      - name: Analyze reports and export SonarQube results
+        run: |
+          admin_password="$(openssl rand -hex 32)"
+          # This default credential is limited to the disposable CI SonarQube instance and immediately rotated.
+          curl --silent --show-error --fail --user admin:admin --request POST --data-urlencode "login=admin" --data-urlencode "previousPassword=admin" --data-urlencode "password=$admin_password" "$SONAR_URL/api/users/change_password" >/dev/null #gitleaks:allow
+
+          sonar_admin_auth=(--user "admin:$admin_password")
+          token_response="$(curl --silent --show-error --fail \
+            "${sonar_admin_auth[@]}" \
+            --request POST \
+            --data-urlencode "name=ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --data-urlencode "type=USER_TOKEN" \
+            "$SONAR_URL/api/user_tokens/generate")"
+          sonar_token="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<<"$token_response")"
+          echo "::add-mask::$sonar_token"
+          sonar_api_auth=(--user "$sonar_token:")
+
+          mkdir -p .scannerwork
+          chmod 777 .scannerwork
+          SONAR_TOKEN="$sonar_token" docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis run --rm sonar-scanner
+
+          ce_task_id="$(sed -n 's/^ceTaskId=//p' .scannerwork/report-task.txt)"
+          if [ -z "$ce_task_id" ]; then
+            echo "SonarQube did not create a compute-engine task ID." >&2
+            exit 1
+          fi
+
+          for attempt in $(seq 1 60); do
+            task_response="$(curl --silent --show-error --fail \
+              "${sonar_api_auth[@]}" \
+              --get \
+              --data-urlencode "id=$ce_task_id" \
+              "$SONAR_URL/api/ce/task")"
+            task_status="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["task"]["status"])' <<<"$task_response")"
+            if [ "$task_status" = "SUCCESS" ]; then
+              break
+            fi
+            if [ "$task_status" = "FAILED" ] || [ "$task_status" = "CANCELED" ]; then
+              echo "SonarQube analysis task ended with status: $task_status" >&2
+              exit 1
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo "Timed out waiting for SonarQube to process the analysis." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          curl --silent --show-error --fail \
+            "${sonar_api_auth[@]}" \
+            --get \
+            --data-urlencode "componentKeys=movie-app" \
+            --data-urlencode "ps=500" \
+            "$SONAR_URL/api/issues/search" >sonar-issues.json
+          curl --silent --show-error --fail \
+            "${sonar_api_auth[@]}" \
+            --get \
+            --data-urlencode "component=movie-app" \
+            --data-urlencode "metricKeys=alert_status,bugs,vulnerabilities,code_smells,coverage,ncloc" \
+            "$SONAR_URL/api/measures/component" >sonar-summary.json
+
+      - name: Upload SonarQube report and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            step4_movie-app/.scannerwork/report-task.txt
+            step4_movie-app/sonar-issues.json
+            step4_movie-app/sonar-summary.json
+
+      - name: Stop SonarQube and remove temporary data
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f ../.github/compose.ci.yaml \
+            --profile analysis down --volumes --remove-orphans
+
+  publish:
+    name: Publish images to Docker Hub
+    if: github.event_name == 'push'
+    needs: sonarqube
+    runs-on: self-hosted
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in and publish versioned images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN in repository Actions secrets." >&2
+            exit 1
+          fi
+          echo "$DOCKERHUB_TOKEN" | docker login \
+            --username "$DOCKERHUB_USERNAME" \
+            --password-stdin
+          trap 'docker logout >/dev/null 2>&1 || true' EXIT
+          version="${GITHUB_REF_NAME}-${GITHUB_SHA}"
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            channel="latest"
+          else
+            channel="dev-latest"
+          fi
+
+          docker build \
+            --tag "$DOCKERHUB_USERNAME/movie-api:$version" \
+            --tag "$DOCKERHUB_USERNAME/movie-api:$channel" \
+            ./step4_movie-app/backend
+          docker build \
+            --tag "$DOCKERHUB_USERNAME/movie-ui:$version" \
+            --tag "$DOCKERHUB_USERNAME/movie-ui:$channel" \
+            ./step4_movie-app/frontend
+
+          docker push "$DOCKERHUB_USERNAME/movie-api:$version"
+          docker push "$DOCKERHUB_USERNAME/movie-api:$channel"
+          docker push "$DOCKERHUB_USERNAME/movie-ui:$version"
+          docker push "$DOCKERHUB_USERNAME/movie-ui:$channel"
+
+  build-report-site:
+    name: Build browsable CI report site
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: sonarqube
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        with:
+          name: test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-reports/tests
+
+      - name: Download SonarQube reports
+        uses: actions/download-artifact@v4
+        with:
+          name: sonarqube-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-reports/sonar
+
+      - name: Generate static report site
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 .github/scripts/build_ci_report.py \
+            --tests ci-reports/tests/surefire-reports/TEST-pytest.xml \
+            --coverage ci-reports/tests/coverage.xml \
+            --sonar-dir ci-reports/sonar \
+            --output-dir _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-report-site:
+    name: Publish CI reports to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-report-site
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy report site
+        id: deployment
+        uses: actions/deploy-pages@v4

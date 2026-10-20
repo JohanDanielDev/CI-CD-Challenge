@@ -1,0 +1,120 @@
+services:
+  movie-db:
+    image: mongo:6.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in step4_movie-app/.env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in step4_movie-app/.env}
+    volumes:
+      - movie_data:/data/db
+      - ./mongo/init.json:/docker-entrypoint-initdb.d/init.json:ro
+      - ./mongo/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    networks:
+      - movie-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  movie-api:
+    image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-local}
+    build:
+      context: ./backend
+    environment:
+      MONGO_URI: mongodb://movie-db:27017/movies_db
+      MONGO_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in step4_movie-app/.env}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in step4_movie-app/.env}
+      MONGO_AUTH_SOURCE: admin
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:1b
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    networks:
+      - movie-net
+
+  ollama:
+    image: ollama/ollama:0.6.8
+    profiles: ["ai"]
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - movie-net
+
+  movie-ui:
+    image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-local}
+    build:
+      context: ./frontend
+    networks:
+      - movie-net
+
+  nginx-proxy:
+    image: nginx:1.29-alpine
+    ports:
+      - "8181:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - movie-ui
+      - movie-api
+    networks:
+      - movie-net
+
+  sonarqube:
+    profiles: ["analysis"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sonarqube
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - movie-net
+
+  tests:
+    profiles: ["analysis"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace/backend
+    networks:
+      - movie-net
+    command:
+      - sh
+      - -c
+      - mkdir -p surefire-reports && pytest -q --junitxml=surefire-reports/TEST-pytest.xml --cov=backend --cov-report=xml:coverage.xml backend/test_app.py mongo/test_db.py
+
+  sonar-scanner:
+    profiles: ["analysis"]
+    image: sonarsource/sonar-scanner-cli:12.2
+    working_dir: /workspace
+    depends_on:
+      - sonarqube
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN:-}
+      SCANNER_WORKDIR_PATH: /workspace/.scannerwork
+    volumes:
+      - .:/workspace
+    networks:
+      - movie-net
+
+volumes:
+  movie_data:
+  ollama_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+
+networks:
+  movie-net:
+    driver: bridge
