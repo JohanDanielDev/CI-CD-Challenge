@@ -8,6 +8,8 @@ __pycache__/
 coverage.xml
 test-results.xml
 surefire-reports/
+e2e-results/
+e2e/node_modules/
 gitleaks.sarif
 sonar-issues.json
 sonar-summary.json
