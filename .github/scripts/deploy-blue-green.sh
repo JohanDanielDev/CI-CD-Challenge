@@ -146,11 +146,19 @@ switch_traffic() {
 
 switch_traffic "$deploy_slot"
 
-if ! curl --silent --show-error --fail "http://127.0.0.1:$APP_PORT/" \
-    | grep -q "Find your next" ||
-   ! curl --silent --show-error --fail \
-    "http://127.0.0.1:$APP_PORT/api/movies?category=comedy" \
-    | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("count") == 12 else 1)'; then
+smoke_check_succeeded=false
+for attempt in $(seq 1 15); do
+  if curl --silent --fail "http://127.0.0.1:$APP_PORT/api/movies?category=comedy" \
+      | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("count") == 12 else 1)' \
+      >/dev/null 2>&1 &&
+     curl --silent --fail "http://127.0.0.1:$APP_PORT/" | grep -q "Find your next"; then
+    smoke_check_succeeded=true
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$smoke_check_succeeded" != true ]]; then
   echo "Post-deployment smoke check failed." >&2
   if [[ -n "$active_slot" ]]; then
     echo "Restoring traffic to the previous $active_slot slot." >&2

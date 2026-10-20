@@ -127,9 +127,10 @@ catalog from `mongo/init.json`. The previous production volume is left untouched
 
 For each release, the workflow starts the inactive color with the new images, waits for health
 checks, verifies the UI and API, then reloads Nginx to switch traffic. The old color remains
-running as the rollback target and is replaced on the next deployment. If the post-switch smoke
-check fails, the workflow switches traffic back to the previous color. Concurrent pushes to the
-same branch are serialized so an in-progress switch is not canceled by a newer run.
+running as the rollback target and is replaced on the next deployment. The post-switch smoke check
+retries briefly to allow Nginx's graceful reload to finish; if it still fails, the workflow switches
+traffic back to the previous color. Concurrent pushes to the same branch are serialized so an
+in-progress switch is not canceled by a newer run.
 
 The production Compose project keeps the local Compose project name `step4_movie-app`, but uses a
 dedicated `step4_movie-app-prod_movie_data` volume instead of reusing any older local database
