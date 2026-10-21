@@ -67,3 +67,21 @@ test("shows AI service errors and lets the user retry", async ({ page }) => {
   await expect(page.locator("#aiResult")).toHaveText("The AI guide is unavailable.");
   await expect(page.getByRole("button", { name: "Ask Gemma" })).toBeEnabled();
 });
+
+test("shows a useful message when the gateway returns HTML instead of JSON", async ({ page }) => {
+  await page.route("**/api/recommendations", route => route.fulfill({
+    status: 504,
+    contentType: "text/html",
+    body: "<html><body>Gateway Timeout</body></html>",
+  }));
+
+  await page.goto("/");
+  await expect(page.locator(".movie-card")).toHaveCount(36);
+  await page.getByRole("button", { name: "Ask Gemma" }).click();
+
+  await expect(page.locator("#aiResult")).toHaveText(
+    "The AI service returned an unexpected response (HTTP 504). Please try again."
+  );
+  await expect(page.locator("#aiResult")).not.toContainText("Unexpected token");
+  await expect(page.getByRole("button", { name: "Ask Gemma" })).toBeEnabled();
+});

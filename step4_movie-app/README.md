@@ -101,6 +101,8 @@ Actions** as the build and deployment source. Add these repository Actions secre
 | `DOCKERHUB_TOKEN` | A Docker Hub access token with permission to push images |
 | `MONGO_USERNAME` | MongoDB root username for CI |
 | `MONGO_PASSWORD` | MongoDB root password for CI |
+| `PROD_MONGO_USERNAME` | MongoDB root username for the fresh production database |
+| `PROD_MONGO_PASSWORD` | MongoDB root password for the fresh production database |
 
 Do not put these values in the repository or send them in chat. These are the GitHub secrets
 needed by the workflow. The workflow creates a temporary SonarQube token inside its disposable CI
@@ -117,20 +119,31 @@ immutable version after all checks and pushes succeed:
 | `dev` | Staging | `http://localhost:8182` |
 | `main` | Production | `http://localhost:8181` |
 
-Each environment has its own Compose project and MongoDB volume. For each release, the workflow
-starts the inactive color with the new images, waits for health checks, verifies the UI and API,
-then reloads Nginx to switch traffic. The old color remains running as the rollback target and is
-replaced on the next deployment. If the post-switch smoke check fails, the workflow switches
+Each environment has its own Compose project and MongoDB volume. Staging uses `MONGO_USERNAME`
+and `MONGO_PASSWORD`; production uses the separate `PROD_MONGO_USERNAME` and
+`PROD_MONGO_PASSWORD` secrets. On the first deployment with those production secrets, Compose
+creates a fresh production volume and MongoDB initializes it with those credentials and seeds the
+catalog from `mongo/init.json`. The previous production volume is left untouched.
+
+For each release, the workflow starts the inactive color with the new images, waits for health
+checks, verifies the UI and API, then reloads Nginx to switch traffic. The old color remains
+running as the rollback target and is replaced on the next deployment. The post-switch smoke check
+retries briefly to allow Nginx's graceful reload to finish; if it still fails, the workflow switches
 traffic back to the previous color. Concurrent pushes to the same branch are serialized so an
 in-progress switch is not canceled by a newer run.
 
-The production Compose project keeps the local Compose project name `step4_movie-app` so an
-existing MongoDB data volume is reused. Blue and green share that environment's database, so
+The production Compose project keeps the local Compose project name `step4_movie-app`, but uses a
+dedicated `step4_movie-app-prod_movie_data` volume instead of reusing any older local database
+volume. Blue and green share that environment's database, so
 database changes must remain compatible with both app versions during a cutover. If an older app
 stack is running under a different Compose project, its MongoDB volume will not be reused
 automatically; back up or migrate that data before the first deployment. Stop the old stack
 without removing its volumes if it owns port `8181`. Once deployment is active, use the workflow
 rather than running `docker compose down` against either deployment project.
+
+MongoDB users are stored in each persistent volume. Changing a MongoDB Actions secret does not
+change the credentials already stored in that volume; keep the production secrets stable after
+the initial production database setup.
 
 The Pages deployment contains static HTML only. It provides a readable browser view of the
 reports; it does not run the app, API, MongoDB, or SonarQube. The latest successful `main`
@@ -143,25 +156,31 @@ trust.
 
 ## Start the local Gemma movie guide
 
-The AI guide runs in its own Ollama container and is not started with the regular app stack.
-From `step4_movie-app`, start it and download the lightweight Gemma 3 1B model:
+The AI guide runs in a separate Ollama container in each Compose environment. Start the container
+for every environment you plan to use; each project has its own network and model volume. From
+`step4_movie-app`, run:
 
 ```bash
-docker compose --profile ai up -d ollama
-docker compose exec ollama ollama pull gemma3:1b
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose --profile ai up -d ollama
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose exec ollama ollama pull gemma3:1b
+
+COMPOSE_PROJECT_NAME=step4_movie-app-dev docker compose --profile ai up -d ollama
+COMPOSE_PROJECT_NAME=step4_movie-app-dev docker compose exec ollama ollama pull gemma3:1b
 ```
 
-Open [http://localhost:8181](http://localhost:8181), enter a mood or request (for example,
+Open [http://localhost:8181](http://localhost:8181) or
+[http://localhost:8182](http://localhost:8182), enter a mood or request (for example,
 “something clever and uplifting”), choose a category, and select **Ask Gemma**. The API sends
 matching movie titles, years, categories, and themes to Gemma, constrains its response to catalog
 titles, validates each pick, and avoids repeating prior picks until the collection has cycled
 through. Ollama is reachable only inside the Compose network; no model API port is published on
 the host.
 The first model download requires an internet connection and several hundred MB of disk space.
-To stop the AI container while keeping its downloaded model:
+Each environment stores its downloaded model in its own persistent volume. To stop one AI
+container while keeping its downloaded model, run:
 
 ```bash
-docker compose --profile ai stop ollama
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose --profile ai stop ollama
 ```
 
 If the AI service is not started, browsing and filtering movies still works; the suggestion

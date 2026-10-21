@@ -694,7 +694,7 @@
             recommendButton.disabled = true;
             recommendButton.textContent = "Thinking…";
             if (!aiResult.textContent.includes("Starting a fresh round")) {
-                aiResult.textContent = "Gemma is looking for a movie that matches your request.";
+                aiResult.textContent = "Gemma is thinking. This can take up to a minute on this machine.";
             }
             try {
                 const response = await fetch("/api/recommendations", {
@@ -706,7 +706,15 @@
                         exclude_titles: [...seenTitles]
                     })
                 });
-                const data = await response.json();
+                const contentType = response.headers.get("content-type") || "";
+                const data = contentType.includes("application/json")
+                    ? await response.json()
+                    : null;
+                if (!data) {
+                    throw new Error(
+                        `The AI service returned an unexpected response (HTTP ${response.status}). Please try again.`
+                    );
+                }
                 if (!response.ok) throw new Error(data.error || "The AI guide could not make a suggestion.");
                 aiResult.textContent = data.recommendation;
                 data.recommendations.forEach(movie => seenTitles.add(movie.title));

@@ -101,7 +101,7 @@ services:
       start_period: 15s
 
   ollama:
-    image: ollama/ollama:0.6.8
+    image: ollama/ollama:0.40.7
     profiles: ["ai"]
     volumes:
       - ollama_data:/root/.ollama

@@ -329,6 +329,8 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
       MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+      PROD_MONGO_USERNAME: ${{ secrets.PROD_MONGO_USERNAME }}
+      PROD_MONGO_PASSWORD: ${{ secrets.PROD_MONGO_PASSWORD }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
