@@ -156,25 +156,31 @@ trust.
 
 ## Start the local Gemma movie guide
 
-The AI guide runs in its own Ollama container and is not started with the regular app stack.
-From `step4_movie-app`, start it and download the lightweight Gemma 3 1B model:
+The AI guide runs in a separate Ollama container in each Compose environment. Start the container
+for every environment you plan to use; each project has its own network and model volume. From
+`step4_movie-app`, run:
 
 ```bash
-docker compose --profile ai up -d ollama
-docker compose exec ollama ollama pull gemma3:1b
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose --profile ai up -d ollama
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose exec ollama ollama pull gemma3:1b
+
+COMPOSE_PROJECT_NAME=step4_movie-app-dev docker compose --profile ai up -d ollama
+COMPOSE_PROJECT_NAME=step4_movie-app-dev docker compose exec ollama ollama pull gemma3:1b
 ```
 
-Open [http://localhost:8181](http://localhost:8181), enter a mood or request (for example,
+Open [http://localhost:8181](http://localhost:8181) or
+[http://localhost:8182](http://localhost:8182), enter a mood or request (for example,
 “something clever and uplifting”), choose a category, and select **Ask Gemma**. The API sends
 matching movie titles, years, categories, and themes to Gemma, constrains its response to catalog
 titles, validates each pick, and avoids repeating prior picks until the collection has cycled
 through. Ollama is reachable only inside the Compose network; no model API port is published on
 the host.
 The first model download requires an internet connection and several hundred MB of disk space.
-To stop the AI container while keeping its downloaded model:
+Each environment stores its downloaded model in its own persistent volume. To stop one AI
+container while keeping its downloaded model, run:
 
 ```bash
-docker compose --profile ai stop ollama
+COMPOSE_PROJECT_NAME=step4_movie-app docker compose --profile ai stop ollama
 ```
 
 If the AI service is not started, browsing and filtering movies still works; the suggestion

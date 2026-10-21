@@ -137,7 +137,7 @@ def get_recommendations():
     )
 
     try:
-        with urlopen(ollama_request, timeout=60) as response:
+        with urlopen(ollama_request, timeout=210) as response:
             result = json.load(response)
     except (URLError, TimeoutError, OSError):
         app.logger.warning("Ollama is unavailable at %s", OLLAMA_URL)
